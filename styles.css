@@ -1,0 +1,64 @@
+/* Hide filtered elements */
+.tbf-hide {
+  display: none !important;
+}
+
+/* ── Toggle switch (matches Thuisbezorgd pie-switch style) ── */
+.tbf-switch {
+  position: relative;
+  display: inline-flex;
+  width: 48px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.tbf-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.tbf-slider {
+  position: absolute;
+  inset: 0;
+  background-color: var(--dt-color-interactive-form, #c4c4c4);
+  border-radius: 24px;
+  transition: background-color 0.15s ease;
+}
+
+.tbf-slider::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 20px;
+  height: 20px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+}
+
+.tbf-switch input:checked + .tbf-slider {
+  background-color: var(--xds-color-interactive-brand, #ff8000);
+}
+
+.tbf-switch input:checked + .tbf-slider::before {
+  transform: translateX(24px);
+}
+
+/* Description under the toggle */
+.tbf-toggle-desc {
+  font-size: 12px;
+  color: var(--xds-color-content-subdued, #757575);
+  margin-top: 2px;
+  padding-bottom: 4px;
+}
+
+/* Separator line to set it apart slightly */
+#tbf-lunch-toggle {
+  border-top: 1px solid var(--xds-color-border-default, #e0e0e0);
+  padding-top: 12px;
+  margin-top: 4px;
+}
