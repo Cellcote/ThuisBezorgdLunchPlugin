@@ -1,296 +1,294 @@
 (function () {
   "use strict";
 
+  // ThuisBezorgd Lunch Filter
+  //
+  // The restaurant list UI is lazy-loaded, split into chunks by ad banners and
+  // ordered by "best match", so hiding native cards is fragile. Instead we read
+  // the full restaurant dataset from __NEXT_DATA__, filter it ourselves and
+  // render our own list (sorted by distance) in place of the native lists.
+
   const CONFIG = {
-    maxDistanceMeters: 1000,
+    maxDistanceMeters: 1500,
     lunchStartHour: 12,
     lunchEndHour: 14,
     debugLog: true,
   };
 
+  const PANEL_ID = "tbf-lunch-panel";
+  const HIDE = "tbf-hide";
+
   let filterEnabled = false;
-  let isApplying = false; // guard against re-entrant calls
+  let dataCache = { url: null, restaurants: null, promise: null };
+  let renderedKey = null;
 
   function log(...args) {
-    if (CONFIG.debugLog) {
-      console.log("[TBF-LunchFilter]", ...args);
-    }
+    if (CONFIG.debugLog) console.log("[TBF-LunchFilter]", ...args);
   }
 
-  log("Plugin loaded on", window.location.href);
+  log("Plugin loaded on", location.href);
 
-  // ── Extract restaurant data from __NEXT_DATA__ ────────────────────
-  function getRestaurantData() {
+  // ── Data ──────────────────────────────────────────────────────────
+  function extractRestaurants(nextData) {
+    return (
+      nextData?.props?.appProps?.preloadedState?.discovery?.restaurantList?.restaurantData || {}
+    );
+  }
+
+  function readInlineData() {
     try {
       const el = document.getElementById("__NEXT_DATA__");
-      if (!el) return {};
-      const nextData = JSON.parse(el.textContent);
-      return nextData.props.appProps.preloadedState.discovery.restaurantList.restaurantData || {};
+      return el ? extractRestaurants(JSON.parse(el.textContent)) : {};
     } catch (e) {
-      log("Failed to get restaurant data:", e);
+      log("Failed to parse inline __NEXT_DATA__:", e);
       return {};
     }
   }
 
-  // ── Will this restaurant be open during 12:00–14:00? ──────────────
-  function isOpenDuringLunch(restaurant) {
-    const delivery = restaurant.availability?.delivery;
-    if (!delivery) return false;
+  async function fetchData(url) {
+    const res = await fetch(url, { credentials: "include" });
+    const html = await res.text();
+    const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+    if (!m) throw new Error(`no __NEXT_DATA__ in response (status ${res.status})`);
+    return extractRestaurants(JSON.parse(m[1]));
+  }
 
-    // Already open right now — good
-    if (delivery.isOpen) return true;
+  // The inline __NEXT_DATA__ is only valid for the URL the page was loaded on;
+  // after client-side navigation (filters, pickup/delivery, address) re-fetch.
+  const initialUrl = location.href;
 
-    // Can preorder and opens before lunch ends (14:00) — good
-    // e.g. "Opent om 11:30" → will be open during lunch
-    if (delivery.canPreOrder && delivery.nextAvailability?.from) {
-      const h = new Date(delivery.nextAvailability.from);
-      if (h.getHours() + h.getMinutes() / 60 < CONFIG.lunchEndHour) return true;
+  function getRestaurants() {
+    const url = location.href;
+    if (dataCache.url === url && dataCache.restaurants) return Promise.resolve(dataCache.restaurants);
+    if (dataCache.url === url && dataCache.promise) return dataCache.promise;
+
+    dataCache = { url, restaurants: null, promise: null };
+    const inline = url === initialUrl ? readInlineData() : {};
+    const p =
+      Object.keys(inline).length > 0
+        ? Promise.resolve(inline)
+        : fetchData(url).catch((e) => {
+            log("Fetch failed, falling back to inline data:", e);
+            return readInlineData();
+          });
+
+    dataCache.promise = p.then((r) => {
+      if (dataCache.url === url) dataCache.restaurants = r;
+      return r;
+    });
+    return dataCache.promise;
+  }
+
+  // ── Filter logic ──────────────────────────────────────────────────
+  function isPickup() {
+    return new URLSearchParams(location.search).get("shipping") === "pickup";
+  }
+
+  function availabilityFor(restaurant) {
+    const a = restaurant.availability || {};
+    return isPickup() ? a.collection : a.delivery;
+  }
+
+  function hourOf(iso) {
+    const d = new Date(iso);
+    return isNaN(d) ? null : { date: d, h: d.getHours() + d.getMinutes() / 60 };
+  }
+
+  function isToday(d) {
+    const n = new Date();
+    return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+  }
+
+  // Accepts orders now or via preorder, and isn't temporarily offline
+  function acceptsOrders(av) {
+    if (!av || av.isTemporarilyOffline) return false;
+    return !!(av.isOpen || av.canPreOrder);
+  }
+
+  // Will this restaurant be open during lunch (12:00–14:00)?
+  function isOpenDuringLunch(av) {
+    if (!av) return false;
+    if (av.isOpen) return true;
+    if (av.canPreOrder && av.nextAvailability?.from) {
+      const t = hourOf(av.nextAvailability.from);
+      if (t && isToday(t.date) && t.h < CONFIG.lunchEndHour) return true;
     }
-
-    // Fallback: check deliveryOpeningTimeLocal
-    if (restaurant.deliveryOpeningTimeLocal) {
-      const h = new Date(restaurant.deliveryOpeningTimeLocal);
-      if (h.getHours() + h.getMinutes() / 60 < CONFIG.lunchEndHour) return true;
-    }
-
     return false;
   }
 
-  // ── Does the restaurant accept orders? ─────────────────────────────
-  function acceptsOrders(restaurant) {
-    const delivery = restaurant.availability?.delivery;
-    if (!delivery) return false;
-    if (delivery.isOpen) return true;
-    if (delivery.canPreOrder) return true;
-    return false;
+  function evaluate(restaurant) {
+    const av = availabilityFor(restaurant);
+    const distance = restaurant.driveDistanceMeters ?? Infinity;
+    const reasons = [];
+    if (distance > CONFIG.maxDistanceMeters) reasons.push(`distance=${distance}m`);
+    if (!acceptsOrders(av)) reasons.push("not orderable");
+    if (!isOpenDuringLunch(av)) reasons.push(`not open ${CONFIG.lunchStartHour}-${CONFIG.lunchEndHour}`);
+    return { show: reasons.length === 0, reasons, distance };
   }
 
-  // ── Build a slug→verdict map from JSON data ───────────────────────
-  function buildFilterMap() {
-    const data = getRestaurantData();
-    const map = {};
-
-    for (const restaurant of Object.values(data)) {
-      const slug = restaurant.uniqueName;
-      const distance = restaurant.driveDistanceMeters ?? Infinity;
-      const withinDistance = distance <= CONFIG.maxDistanceMeters;
-      const orderable = acceptsOrders(restaurant);
-      const lunchOpen = isOpenDuringLunch(restaurant);
-      const shouldShow = withinDistance && orderable && lunchOpen;
-
-      map[slug] = shouldShow;
-
-      if (!shouldShow && CONFIG.debugLog) {
-        const reasons = [];
-        if (!withinDistance) reasons.push(`distance=${distance}m`);
-        if (!orderable) reasons.push("not orderable");
-        if (!lunchOpen) reasons.push("not open 12-14");
-        log(`HIDE: "${restaurant.name}" (${reasons.join(", ")})`);
-      }
+  function selectMatches(restaurants) {
+    const matches = [];
+    for (const r of Object.values(restaurants)) {
+      if (!r?.uniqueName) continue;
+      const v = evaluate(r);
+      if (v.show) matches.push(r);
+      else if (v.distance <= CONFIG.maxDistanceMeters) log(`HIDE: "${r.name}" (${v.reasons.join(", ")})`);
     }
-    return map;
+    matches.sort((a, b) => (a.driveDistanceMeters ?? Infinity) - (b.driveDistanceMeters ?? Infinity));
+    return matches;
   }
 
-  // ── Apply or remove filters ───────────────────────────────────────
-  function applyFilters() {
-    if (isApplying) return;
-    isApplying = true;
-
-    try {
-      if (!filterEnabled) {
-        // Undo everything: unhide, restore moved cards, restore availability text
-        document.querySelectorAll(".tbf-hide").forEach((el) => el.classList.remove("tbf-hide"));
-        document.querySelectorAll(".tbf-moved").forEach((el) => {
-          // Move back to original parent
-          if (el._tbfOriginalParent) {
-            el._tbfOriginalParent.appendChild(el);
-          }
-          el.classList.remove("tbf-moved");
-        });
-        document.querySelectorAll(".tbf-availability-hidden").forEach((el) => {
-          el.classList.remove("tbf-availability-hidden");
-        });
-        log("Filters removed, cards restored");
-        return;
-      }
-
-      const filterMap = buildFilterMap();
-      if (Object.keys(filterMap).length === 0) {
-        log("No restaurant data yet");
-        return;
-      }
-
-      // ── Merge lists: move preorder/offline cards into the main open list ──
-      const openContent = document.querySelector('[data-qa="list-all-open-content"]');
-      const secondaryLists = document.querySelectorAll(
-        '[data-qa="list-all-preorder-content"], [data-qa="list-all-offline-content"]'
-      );
-
-      // Fallback: find by section header text
-      const allListContents = document.querySelectorAll('.list-style_list-contents__ve02L');
-
-      if (openContent) {
-        // Move cards from preorder/offline sections into the open section
-        secondaryLists.forEach((list) => {
-          const cards = list.querySelectorAll(':scope > [data-qa="restaurant-card"], :scope > [data-qa="sentinel-wrapped"]');
-          cards.forEach((card) => {
-            if (!card.classList.contains("tbf-moved")) {
-              card._tbfOriginalParent = card.parentElement;
-              card.classList.add("tbf-moved");
-              openContent.appendChild(card);
-            }
-          });
-        });
-
-        // Also try moving from any list-contents that is NOT the open list
-        if (secondaryLists.length === 0 && allListContents.length > 1) {
-          allListContents.forEach((list, i) => {
-            if (i === 0) return; // skip the first (open) list
-            const cards = list.querySelectorAll(':scope > [data-qa="restaurant-card"], :scope > [data-qa="sentinel-wrapped"], :scope > .restaurant-card-shell_card__IMerh');
-            cards.forEach((card) => {
-              if (!card.classList.contains("tbf-moved")) {
-                card._tbfOriginalParent = card.parentElement;
-                card.classList.add("tbf-moved");
-                openContent.appendChild(card);
-              }
-            });
-          });
-        }
-      }
-
-      let shown = 0;
-      let hidden = 0;
-
-      // ── Filter all restaurant cards (now all in one list) ──
-      document.querySelectorAll('[data-qa="restaurant-card"]').forEach((card) => {
-        const link = card.querySelector('a[data-qa*="-link"]');
-        if (!link) return;
-
-        const qa = link.getAttribute("data-qa") || "";
-        const m = qa.match(/(?:restaurant-card|carousel-card)-(.+)-link/);
-        if (!m) return;
-
-        const slug = m[1];
-        const container = card.closest('[data-qa="sentinel-wrapped"]') || card;
-
-        // Check DOM text for "neemt geen bestellingen aan"
-        const text = (card.textContent || "").toLowerCase();
-        const noOrders = text.includes("neemt geen bestellingen aan");
-
-        const showByData = filterMap[slug] !== undefined ? filterMap[slug] : true;
-
-        if (!showByData || noOrders) {
-          container.classList.add("tbf-hide");
-          hidden++;
-        } else {
-          container.classList.remove("tbf-hide");
-          shown++;
-
-          // Hide availability/preorder status on shown cards
-          // e.g. "Opent om 11:30", "Gesloten voor bezorging", preorder badges
-          hideAvailabilityInfo(card);
-        }
-      });
-
-      // ── Filter re-order cards ──
-      document.querySelectorAll('[data-qa="reorder-card"]').forEach((card) => {
-        const link = card.querySelector('a[data-qa="link"]');
-        if (!link) return;
-        const href = link.getAttribute("href") || "";
-        const m = href.match(/\/menu\/([^?]+)/);
-        if (!m) return;
-
-        if (filterMap[m[1]] === false) {
-          card.classList.add("tbf-hide");
-        } else {
-          card.classList.remove("tbf-hide");
-        }
-      });
-
-      // ── Hide section headers and empty preorder/offline sections ──
-      document.querySelectorAll(".list-style_list-header__08H3v").forEach((header) => {
-        const t = (header.textContent || "").toLowerCase();
-        if (t.includes("binnenkort") || t.includes("gesloten") || t.includes("open later")) {
-          header.classList.add("tbf-hide");
-        }
-      });
-
-      // ── Hide carousels where all cards are hidden ──
-      document.querySelectorAll('[data-qa="carousel"]').forEach((carousel) => {
-        const visible = carousel.querySelectorAll(
-          '[data-qa="restaurant-card"]:not(.tbf-hide), [data-qa="reorder-card"]:not(.tbf-hide)'
-        );
-        if (visible.length === 0) carousel.classList.add("tbf-hide");
-        else carousel.classList.remove("tbf-hide");
-      });
-
-      // ── Update counter ──
-      const listTitle = document.querySelector('[data-qa="list-all-open-title"]');
-      if (listTitle) {
-        listTitle.textContent = `Bestel bij ${shown} locaties (lunch filter)`;
-      }
-
-      log(`Done: ${shown} shown, ${hidden} hidden`);
-    } finally {
-      isApplying = false;
-    }
+  // ── Rendering ─────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
-  // ── Hide the availability/preorder info on a restaurant card ──────
-  function hideAvailabilityInfo(card) {
-    // Hide "Opent om ..." / "Gesloten voor bezorging" / preorder time text
-    // These appear in the card as status messages and ETA elements
-    // that reference opening times rather than delivery durations
-    const etaEl = card.querySelector('[data-qa="restaurant-eta"]');
-    if (etaEl) {
-      const text = (etaEl.textContent || "").toLowerCase();
-      // If it shows an opening time (e.g. "Opent om 11:30") rather than
-      // a delivery duration (e.g. "25-45 min"), hide it
-      if (text.includes("opent") || text.includes("opens") || text.includes("vanaf")) {
-        etaEl.classList.add("tbf-availability-hidden", "tbf-hide");
-      }
-    }
+  function formatDistance(m) {
+    if (m == null) return "";
+    return m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1).replace(".", ",")} km`;
+  }
 
-    // Hide preorder/offline status overlays or badges
-    card.querySelectorAll('[class*="preorder"], [class*="Preorder"], [class*="offline"], [class*="Offline"]').forEach((el) => {
-      el.classList.add("tbf-availability-hidden", "tbf-hide");
+  function headerImage(r) {
+    const tpl = r.partnerHeaderInfo?.headerImages?.[0]?.urlTemplate || r.bannerUrl;
+    return tpl ? tpl.replace("{transformations}", "c_thumb,h_144,w_287/f_auto/q_auto:eco") : "";
+  }
+
+  function menuHref(r) {
+    const shipping = new URLSearchParams(location.search).get("shipping");
+    return `/menu/${encodeURIComponent(r.uniqueName)}${shipping ? `?shipping=${encodeURIComponent(shipping)}` : ""}`;
+  }
+
+  function cardHtml(r) {
+    const img = headerImage(r);
+    const rating = r.rating?.starRating
+      ? `<span>★ ${String(r.rating.starRating).replace(".", ",")} (${r.rating.count ?? 0})</span>`
+      : "";
+    const cuisines = (r.cuisines || []).slice(0, 2).map((c) => c.name).join(", ");
+    return `
+      <a class="tbf-card" href="${esc(menuHref(r))}" data-tbf-slug="${esc(r.uniqueName)}">
+        <div class="tbf-card-img" ${img ? `style="background-image:url('${esc(img)}')"` : ""}>
+          ${r.logoUrl ? `<img class="tbf-card-logo" src="${esc(r.logoUrl)}" alt="" loading="lazy">` : ""}
+        </div>
+        <div class="tbf-card-name">${esc(r.name)}</div>
+        <div class="tbf-card-meta">
+          ${rating}
+          <span>${esc(formatDistance(r.driveDistanceMeters))}</span>
+          ${cuisines ? `<span>${esc(cuisines)}</span>` : ""}
+        </div>
+      </a>`;
+  }
+
+  function nativeListElements() {
+    return document.querySelectorAll('[data-qa^="list-"]');
+  }
+
+  function ensurePanel() {
+    let panel = document.getElementById(PANEL_ID);
+    if (panel && panel.isConnected) return panel;
+
+    const anchor = nativeListElements()[0];
+    if (!anchor) return null;
+
+    panel = document.createElement("section");
+    panel.id = PANEL_ID;
+    anchor.parentElement.insertBefore(panel, anchor);
+    renderedKey = null;
+    return panel;
+  }
+
+  function setHidden(el, hidden) {
+    if (hidden && !el.classList.contains(HIDE)) el.classList.add(HIDE, "tbf-native");
+    else if (!hidden && el.classList.contains("tbf-native")) el.classList.remove(HIDE, "tbf-native");
+  }
+
+  function hideNative(matchSlugs) {
+    // Native restaurant list sections (headers + content chunks)
+    nativeListElements().forEach((el) => setHidden(el, true));
+
+    // (Promo/sponsored banners are always hidden via styles.css)
+
+    // "Opnieuw bestellen" carousel: keep only restaurants that match
+    document.querySelectorAll('[data-qa="reorder-card"]').forEach((card) => {
+      const href = card.querySelector("a[href*='/menu/']")?.getAttribute("href") || "";
+      const m = href.match(/\/menu\/([^?/]+)/);
+      setHidden(card, !!m && !matchSlugs.has(m[1]));
     });
-
-    // Hide any "Gesloten" or "Opent om" text spans in the card
-    card.querySelectorAll("span, div, p").forEach((el) => {
-      if (el.children.length > 2) return; // skip container divs
-      const t = (el.textContent || "").trim().toLowerCase();
-      if (
-        (t.startsWith("opent") || t.startsWith("opens") || t.startsWith("gesloten") || t.startsWith("closed") || t.startsWith("vanaf")) &&
-        t.length < 40
-      ) {
-        el.classList.add("tbf-availability-hidden", "tbf-hide");
+    document.querySelectorAll('[data-qa="carousel"]').forEach((carousel) => {
+      const cards = carousel.querySelectorAll('[data-qa="reorder-card"]');
+      if (cards.length === 0) {
+        // Curated carousels ("Populaire merken", "De aanbiedingen van vandaag", …)
+        setHidden(carousel, true);
+        return;
       }
+      const visible = Array.from(cards).some((c) => !c.classList.contains(HIDE));
+      setHidden(carousel, !visible);
     });
   }
 
-  // ── Inject toggle into sidebar ────────────────────────────────────
+  function restoreNative() {
+    document.querySelectorAll(".tbf-native").forEach((el) => el.classList.remove(HIDE, "tbf-native"));
+    document.getElementById(PANEL_ID)?.remove();
+    renderedKey = null;
+  }
+
+  async function applyFilters() {
+    if (!filterEnabled) {
+      restoreNative();
+      log("Filter off, native list restored");
+      return;
+    }
+
+    const panel = ensurePanel();
+    if (!panel) {
+      log("Native list not found yet");
+      return;
+    }
+
+    const url = location.href;
+    if (renderedKey !== url) {
+      panel.innerHTML = `<div class="tbf-panel-header"><h2>Lunch filter</h2><span class="tbf-panel-sub">Laden…</span></div>`;
+    }
+
+    const restaurants = await getRestaurants();
+    if (!filterEnabled || location.href !== url) return; // state changed while loading
+
+    const matches = selectMatches(restaurants);
+    hideNative(new Set(matches.map((r) => r.uniqueName)));
+
+    if (renderedKey === url && panel.isConnected) return;
+    const mode = isPickup() ? "afhalen" : "bezorgen";
+    panel.innerHTML = `
+      <div class="tbf-panel-header">
+        <h2>Lunch: ${matches.length} locaties</h2>
+        <span class="tbf-panel-sub">&lt; ${formatDistance(CONFIG.maxDistanceMeters)} · open ${CONFIG.lunchStartHour}:00–${CONFIG.lunchEndHour}:00 · ${mode} · op afstand gesorteerd</span>
+      </div>
+      ${
+        matches.length
+          ? `<div class="tbf-grid">${matches.map(cardHtml).join("")}</div>`
+          : `<p class="tbf-empty">Geen restaurants gevonden die aan het lunch filter voldoen.</p>`
+      }`;
+    renderedKey = url;
+    log(`Rendered ${matches.length} of ${Object.keys(restaurants).length} restaurants`);
+  }
+
+  // ── Sidebar toggle ────────────────────────────────────────────────
   function injectToggle() {
-    if (document.getElementById("tbf-lunch-toggle")) {
-      // Already exists — just sync the checkbox state
+    const existing = document.getElementById("tbf-lunch-toggle");
+    if (existing && existing.isConnected) {
       const cb = document.getElementById("tbf-lunch-checkbox");
       if (cb && cb.checked !== filterEnabled) cb.checked = filterEnabled;
       return true;
     }
 
     const filterList = document.querySelector('ul[data-qa="filter"]');
-    if (!filterList) {
-      log("Sidebar not found yet...");
-      return false;
-    }
+    if (!filterList) return false;
 
-    // Find "Nieuw" item, or fall back to second <li>
     const items = filterList.querySelectorAll(":scope > li");
     let insertAfter = null;
     items.forEach((li) => {
-      if (li.querySelector('[data-qa="new-filter-label"]')) insertAfter = li;
+      if (li.querySelector('[data-qa^="new-"]')) insertAfter = li;
     });
-    if (!insertAfter && items.length >= 2) insertAfter = items[1];
+    if (!insertAfter && items.length) insertAfter = items[items.length - 1];
 
     const li = document.createElement("li");
     li.id = "tbf-lunch-toggle";
@@ -302,13 +300,15 @@
           <span class="tbf-slider"></span>
         </label>
       </div>
-      <div class="tbf-toggle-desc">&lt; 1 km · 12:00–14:00 · neemt bestellingen aan</div>
+      <div class="tbf-toggle-desc">&lt; ${formatDistance(CONFIG.maxDistanceMeters)} · ${CONFIG.lunchStartHour}:00–${CONFIG.lunchEndHour}:00 · neemt bestellingen aan</div>
     `;
 
     if (insertAfter) insertAfter.after(li);
     else filterList.prepend(li);
 
-    document.getElementById("tbf-lunch-checkbox").addEventListener("change", function () {
+    const cb = document.getElementById("tbf-lunch-checkbox");
+    cb.checked = filterEnabled;
+    cb.addEventListener("change", function () {
       filterEnabled = this.checked;
       log("Lunch filter", filterEnabled ? "ON" : "OFF");
       applyFilters();
@@ -318,52 +318,44 @@
     return true;
   }
 
-  // ── Observe DOM changes (infinite scroll, re-renders) ─────────────
+  // ── Keep in sync with React re-renders and client-side navigation ─
   function setupObserver() {
-    // Only observe the restaurant list area, not the whole body
-    const target = document.querySelector(".restaurant-list-page-layout_content__wiX_2") || document.body;
+    let timer = null;
+    let lastUrl = location.href;
 
     const obs = new MutationObserver(() => {
-      clearTimeout(obs._t);
-      obs._t = setTimeout(() => {
-        // Re-inject toggle if sidebar got re-rendered
+      clearTimeout(timer);
+      timer = setTimeout(() => {
         injectToggle();
-        // Re-apply filter if enabled (new cards may have loaded)
-        if (filterEnabled && !isApplying) applyFilters();
-      }, 600);
+        if (!filterEnabled) return;
+        const urlChanged = location.href !== lastUrl;
+        lastUrl = location.href;
+        const panelMissing = !document.getElementById(PANEL_ID);
+        const nativeVisible = Array.from(
+          document.querySelectorAll('[data-qa^="list-"], [data-qa="carousel"]:not(:has([data-qa="reorder-card"]))')
+        ).some((el) => !el.classList.contains(HIDE));
+        if (urlChanged || panelMissing || nativeVisible) applyFilters();
+      }, 400);
     });
 
-    obs.observe(target, { childList: true, subtree: true });
-    log("Observer active on", target.className || "body");
+    obs.observe(document.body, { childList: true, subtree: true });
+    log("Observer active");
   }
 
-  // ── Boot ──────────────────────────────────────────────────────────
   function main() {
-    log("Initialising...");
-
     let attempts = 0;
     const tryInit = () => {
       attempts++;
-      const hasToggle = injectToggle();
-      const hasData = Object.keys(getRestaurantData()).length > 0;
-
-      if (hasToggle && hasData) {
-        log("Ready! Toggle is in the sidebar.");
+      if (injectToggle() || attempts >= 30) {
+        log(attempts >= 30 ? "WARNING: sidebar not found" : "Ready! Toggle is in the sidebar.");
         setupObserver();
-      } else if (attempts < 30) {
-        setTimeout(tryInit, 1000);
       } else {
-        log("WARNING: gave up waiting. toggle:", hasToggle, "data:", hasData);
-        setupObserver();
+        setTimeout(tryInit, 1000);
       }
     };
-
-    setTimeout(tryInit, 1500);
+    tryInit();
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", main);
-  } else {
-    main();
-  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", main);
+  else main();
 })();

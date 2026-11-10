@@ -62,3 +62,98 @@
   padding-top: 12px;
   margin-top: 4px;
 }
+
+/* ── Promo / sponsored banners (e.g. "50% korting", "Gesponsord") ── */
+[class*="embedded-webview_blueprint"] {
+  display: none !important;
+}
+
+/* ── Lunch result panel ── */
+#tbf-lunch-panel {
+  margin-bottom: 24px;
+}
+
+.tbf-panel-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 16px;
+}
+
+.tbf-panel-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--xds-color-content-default, inherit);
+}
+
+.tbf-panel-sub,
+.tbf-empty {
+  font-size: 13px;
+  color: var(--xds-color-content-subdued, #757575);
+}
+
+.tbf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px 16px;
+}
+
+.tbf-card {
+  display: block;
+  color: var(--xds-color-content-default, inherit);
+  text-decoration: none;
+  min-width: 0;
+}
+
+.tbf-card:hover .tbf-card-name {
+  text-decoration: underline;
+}
+
+.tbf-card-img {
+  position: relative;
+  aspect-ratio: 2 / 1;
+  border-radius: 12px;
+  background: var(--xds-color-container-strong, #2a2a2a) center / cover no-repeat;
+  overflow: hidden;
+}
+
+.tbf-card-logo {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: #fff;
+  object-fit: contain;
+}
+
+.tbf-card-name {
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tbf-card-meta {
+  display: flex;
+  gap: 0 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--xds-color-content-subdued, #757575);
+}
+
+.tbf-card-meta span + span::before {
+  content: "·";
+  margin-right: 8px;
+}
+
+.tbf-card-meta span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

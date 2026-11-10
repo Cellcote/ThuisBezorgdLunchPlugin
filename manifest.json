@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ThuisBezorgd Lunch Filter",
-  "version": "1.0.0",
-  "description": "Auto-filters ThuisBezorgd for pickup lunch: ThuisbezorgdPay, 1km, open 12-14, single list",
+  "version": "2.0.0",
+  "description": "Auto-filters ThuisBezorgd for lunch: < 1.5 km, open 12-14, sorted by distance, no promo banners",
   "permissions": [],
   "content_scripts": [
     {
