@@ -1,0 +1,23 @@
+{
+  "docVersion": "1.0.0",
+  "resource": {
+    "name": "GetLunchOrders",
+    "kind": "package",
+    "apiVersion": "orchestrator.uipath.com/v1",
+    "projectKey": "ae3923e8-15dc-4fa5-919a-f362cb2a6cda",
+    "isOverridable": true,
+    "dependencies": [],
+    "runtimeDependencies": [],
+    "folders": [
+      {
+        "fullyQualifiedName": "solution_folder"
+      }
+    ],
+    "spec": {
+      "name": "GetLunchOrders"
+    },
+    "locks": [],
+    "key": "9b56c089-7f59-41bc-a77a-f51fbdf69507",
+    "files": []
+  }
+}

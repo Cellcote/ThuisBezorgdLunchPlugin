@@ -1,0 +1,79 @@
+name: Release
+
+# Push a tag matching manifest.json's version to release, e.g.:
+#   git tag v3.0.2 && git push origin v3.0.2
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Holds the optional AMO signing secrets; restrict it to v* tags in
+    # Settings → Environments → release.
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Tag must match manifest version
+        run: npm run check:version # reads GITHUB_REF_NAME
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run lint:firefox
+
+      # Firefox only installs signed add-ons permanently. If AMO API credentials
+      # are configured, sign as an unlisted (self-distributed) add-on.
+      - name: Sign Firefox add-on (AMO, unlisted)
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          if [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
+            echo "::warning::AMO_JWT_ISSUER/AMO_JWT_SECRET not set; Firefox package is unsigned"
+            exit 0
+          fi
+          npx web-ext sign --source-dir dist/firefox --artifacts-dir dist/signed \
+            --channel unlisted --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
+          version=$(node -p 'require("./manifest.json").version')
+          mv dist/signed/*.xpi "dist/lunch-filter-firefox-${version}.xpi"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-packages
+          path: |
+            dist/*.zip
+            dist/*.xpi
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # create the GitHub release
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-packages
+          path: dist
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/* --title "$TAG" --generate-notes --verify-tag

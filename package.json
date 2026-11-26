@@ -1,0 +1,22 @@
+{
+  "name": "thuisbezorgd-lunch-filter",
+  "private": true,
+  "type": "module",
+  "description": "Browser extension that filters ThuisBezorgd for lunch and shows where colleagues order",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "node scripts/build.mjs",
+    "lint:firefox": "web-ext lint --source-dir dist/firefox --self-hosted",
+    "check:version": "node scripts/check-version.mjs",
+    "ci": "npm run lint && npm run check:version && npm run build && npm run lint:firefox"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0",
+    "web-ext": "^10.8.0"
+  }
+}

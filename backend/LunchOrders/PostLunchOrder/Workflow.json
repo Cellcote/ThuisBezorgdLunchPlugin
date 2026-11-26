@@ -1,0 +1,195 @@
+{
+  "document": {
+    "dsl": "1.0.0",
+    "name": "PostLunchOrder",
+    "tags": {
+      "projectId": "05d2fa69-6e41-437d-b599-d68218dba761"
+    },
+    "version": "0.0.1",
+    "namespace": "default",
+    "metadata": {
+      "variables": {
+        "schema": {
+          "format": "json",
+          "document": {
+            "type": "object",
+            "title": "Variables",
+            "properties": {}
+          }
+        }
+      }
+    }
+  },
+  "do": [
+    {
+      "Sequence_1": {
+        "do": [
+          {
+            "WorkflowStart": {
+              "set": "${ { ...Object.entries($workflow.definition?.document?.metadata?.variables?.schema?.document?.properties || {}).reduce((acc, [name, def]) => ({ ...acc, [name]: def?.default }), {}), ...($workflow.input || {}) } }",
+              "output": {
+                "as": "${$input}"
+              },
+              "export": {
+                "as": "{ ...$context, variables: { ...$context.variables, ...$output } }"
+              },
+              "metadata": {
+                "activityType": "Assign",
+                "displayName": "Workflow start",
+                "fullName": "Assign",
+                "isTransparent": true
+              }
+            }
+          },
+          {
+            "Javascript_PrepareOrder": {
+              "run": {
+                "script": {
+                  "code": "const amsDate = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);\nconst s = (v) => (v == null ? '' : String(v)).trim();\nconst i = $workflow.input || {};\nconst person = s(i.person).slice(0, 200);\nconst restaurantSlug = s(i.restaurantSlug).toLowerCase().slice(0, 200);\nif (!person) throw new Error('person is required');\nif (!/^[a-z0-9-]+$/.test(restaurantSlug)) throw new Error('restaurantSlug is required (letters, digits, dashes)');\nconst at = s(i.orderedAt) ? new Date(s(i.orderedAt)) : new Date();\nif (isNaN(at.getTime())) throw new Error('orderedAt is not a valid date');\nconst pickup = s(i.pickupAt) ? new Date(s(i.pickupAt)) : at;\nif (isNaN(pickup.getTime())) throw new Error('pickupAt is not a valid date');\nreturn { person, restaurantSlug, restaurantName: s(i.restaurantName).slice(0, 200) || restaurantSlug, orderReference: s(i.orderReference).slice(0, 100), orderedAt: at.toISOString(), pickupAt: pickup.toISOString(), orderDate: amsDate(pickup) };",
+                  "language": "javascript",
+                  "arguments": "${{ \"$context\": $context, \"$workflow\": $workflow, \"$input\": $input }}"
+                }
+              },
+              "export": {
+                "as": "{ ...$context, outputs: { ...$context?.outputs, \"Javascript_PrepareOrder\": $output } }"
+              },
+              "metadata": {
+                "activityType": "JsInvoke",
+                "displayName": "Validate and prepare order",
+                "fullName": "JsInvoke"
+              }
+            }
+          },
+          {
+            "CreateEntityRecordV3_1": {
+              "call": "UiPath.IntSvc",
+              "with": {
+                "connector": "uipath-uipath-dataservice",
+                "connectionId": "1bf9f2b5-41de-446e-9769-8444383a4d9a",
+                "connectionResourceId": "1bf9f2b5-41de-446e-9769-8444383a4d9a",
+                "method": "POST",
+                "endpoint": "/v3/CreateEntityRecord/insert",
+                "queryParameters": {
+                  "entityScope": "tenant",
+                  "tenantEntityName": "LunchOrder"
+                },
+                "bodyParameters": {
+                  "person": "${$context.outputs.Javascript_PrepareOrder.person}",
+                  "restaurantSlug": "${$context.outputs.Javascript_PrepareOrder.restaurantSlug}",
+                  "restaurantName": "${$context.outputs.Javascript_PrepareOrder.restaurantName}",
+                  "orderedAt": "${$context.outputs.Javascript_PrepareOrder.orderedAt}",
+                  "orderDate": "${$context.outputs.Javascript_PrepareOrder.orderDate}",
+                  "orderReference": "${$context.outputs.Javascript_PrepareOrder.orderReference}",
+                  "pickupAt": "${$context.outputs.Javascript_PrepareOrder.pickupAt}"
+                }
+              },
+              "export": {
+                "as": "{ ...$context, outputs: { ...$context?.outputs, \"CreateEntityRecord_V3_1\": $output } }"
+              },
+              "metadata": {
+                "fullName": "Connector",
+                "activityType": "Connector",
+                "displayName": "Create Entity Record",
+                "uiPathActivityTypeId": "11a59287-5a7a-3a74-b000-91d2c2b6428d",
+                "assemblyQualifiedName": "Connector",
+                "configuration": "{\"essentialConfiguration\":{\"connectorVersion\":\"\",\"executionType\":null,\"customFieldsRequestDetails\":null,\"instanceParameters\":{\"version\":\"1.0.0\",\"connectorKey\":\"uipath-uipath-dataservice\",\"activityType\":\"Curated\",\"objectName\":\"CreateEntityRecord_V3\",\"httpMethod\":\"POST\",\"operation\":null,\"eventOperation\":null,\"eventMode\":null,\"connectorObjects\":null,\"previewEndpoint\":null},\"objectName\":\"CreateEntityRecord_V3\",\"operation\":null,\"packageVersion\":\"1.0.0\",\"httpMethod\":\"POST\",\"path\":\"/v3/CreateEntityRecord/insert\",\"unifiedTypesCompatible\":true,\"savedJitInputFieldId\":\"in_CreateEntityRecord_V3\"}}"
+              }
+            }
+          },
+          {
+            "Response_1": {
+              "response": "${{ ok: true, id: $context.outputs.CreateEntityRecord_V3_1?.content?.Id, person: $context.outputs.Javascript_PrepareOrder.person, restaurantSlug: $context.outputs.Javascript_PrepareOrder.restaurantSlug, orderDate: $context.outputs.Javascript_PrepareOrder.orderDate, pickupAt: $context.outputs.Javascript_PrepareOrder.pickupAt }}",
+              "markJobAsFailed": false,
+              "then": "end",
+              "export": {
+                "as": "{ ...$context, outputs: { ...$context?.outputs, \"Response_1\": $output } }"
+              },
+              "metadata": {
+                "activityType": "Response",
+                "displayName": "Response",
+                "fullName": "Response"
+              }
+            }
+          }
+        ],
+        "metadata": {
+          "activityType": "Sequence",
+          "displayName": "Sequence",
+          "fullName": "Sequence"
+        }
+      }
+    }
+  ],
+  "evaluate": {
+    "mode": "strict",
+    "language": "javascript"
+  },
+  "input": {
+    "schema": {
+      "format": "json",
+      "document": {
+        "type": "object",
+        "properties": {
+          "person": {
+            "type": "string",
+            "description": "Name of the person ordering"
+          },
+          "restaurantSlug": {
+            "type": "string",
+            "description": "Thuisbezorgd restaurant slug (uniqueName)"
+          },
+          "restaurantName": {
+            "type": "string",
+            "description": "Display name of the restaurant"
+          },
+          "orderReference": {
+            "type": "string",
+            "description": "Thuisbezorgd order reference, if known"
+          },
+          "orderedAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp the order was placed; defaults to now"
+          },
+          "pickupAt": {
+            "type": "string",
+            "description": "ISO 8601 planned pickup time; defaults to orderedAt"
+          }
+        },
+        "required": [
+          "person",
+          "restaurantSlug"
+        ],
+        "title": "Inputs"
+      }
+    }
+  },
+  "output": {
+    "schema": {
+      "format": "json",
+      "document": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "person": {
+            "type": "string"
+          },
+          "restaurantSlug": {
+            "type": "string"
+          },
+          "orderDate": {
+            "type": "string"
+          },
+          "pickupAt": {
+            "type": "string"
+          }
+        },
+        "title": "Outputs"
+      }
+    }
+  }
+}

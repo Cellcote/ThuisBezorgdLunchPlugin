@@ -1,0 +1,182 @@
+{
+  "document": {
+    "dsl": "1.0.0",
+    "name": "GetLunchOrders",
+    "tags": {
+      "projectId": "21f80547-4dcb-4822-bfb0-3fdf17745bd7"
+    },
+    "version": "0.0.1",
+    "namespace": "default",
+    "metadata": {
+      "variables": {
+        "schema": {
+          "format": "json",
+          "document": {
+            "type": "object",
+            "title": "Variables",
+            "properties": {}
+          }
+        }
+      }
+    }
+  },
+  "do": [
+    {
+      "Sequence_1": {
+        "do": [
+          {
+            "WorkflowStart": {
+              "set": "${ { ...Object.entries($workflow.definition?.document?.metadata?.variables?.schema?.document?.properties || {}).reduce((acc, [name, def]) => ({ ...acc, [name]: def?.default }), {}), ...($workflow.input || {}) } }",
+              "output": {
+                "as": "${$input}"
+              },
+              "export": {
+                "as": "{ ...$context, variables: { ...$context.variables, ...$output } }"
+              },
+              "metadata": {
+                "activityType": "Assign",
+                "displayName": "Workflow start",
+                "fullName": "Assign",
+                "isTransparent": true
+              }
+            }
+          },
+          {
+            "Javascript_ResolveDate": {
+              "run": {
+                "script": {
+                  "code": "const amsDate = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);\nconst d = String(($workflow.input || {}).date || '').trim();\nif (d && !/^\\d{4}-\\d{2}-\\d{2}$/.test(d)) throw new Error('date must be YYYY-MM-DD');\nreturn { orderDate: d || amsDate(new Date()) };",
+                  "language": "javascript",
+                  "arguments": "${{ \"$context\": $context, \"$workflow\": $workflow, \"$input\": $input }}"
+                }
+              },
+              "export": {
+                "as": "{ ...$context, outputs: { ...$context?.outputs, \"Javascript_ResolveDate\": $output } }"
+              },
+              "metadata": {
+                "activityType": "JsInvoke",
+                "displayName": "Resolve order date",
+                "fullName": "JsInvoke"
+              }
+            }
+          },
+          {
+            "QueryEntityRecordsV3_1": {
+              "call": "UiPath.IntSvc",
+              "with": {
+                "connector": "uipath-uipath-dataservice",
+                "connectionId": "1bf9f2b5-41de-446e-9769-8444383a4d9a",
+                "connectionResourceId": "1bf9f2b5-41de-446e-9769-8444383a4d9a",
+                "method": "POST",
+                "endpoint": "/v3/QueryEntityRecords/query",
+                "queryParameters": {
+                  "entityScope": "tenant",
+                  "tenantEntityName": "LunchOrder",
+                  "queryExpression": "${\"orderDate = '\" + $context.outputs.Javascript_ResolveDate.orderDate + \"'\"}",
+                  "limit": 1000,
+                  "expansionLevel": 1,
+                  "isAscending": true
+                },
+                "bodyParameters": {
+                  "_sortFieldName": "pickupAt"
+                }
+              },
+              "export": {
+                "as": "{ ...$context, outputs: { ...$context?.outputs, \"QueryEntityRecords_V3_1\": $output } }"
+              },
+              "metadata": {
+                "fullName": "Connector",
+                "activityType": "Connector",
+                "displayName": "Query Entity Records",
+                "uiPathActivityTypeId": "deababb7-2da5-3651-a5ca-2e6bb4bbd957",
+                "assemblyQualifiedName": "Connector",
+                "configuration": "{\"essentialConfiguration\":{\"connectorVersion\":\"\",\"executionType\":null,\"customFieldsRequestDetails\":null,\"instanceParameters\":{\"version\":\"1.0.0\",\"connectorKey\":\"uipath-uipath-dataservice\",\"activityType\":\"Curated\",\"objectName\":\"QueryEntityRecords_V3\",\"httpMethod\":\"POST\",\"operation\":null,\"eventOperation\":null,\"eventMode\":null,\"connectorObjects\":null,\"previewEndpoint\":null},\"objectName\":\"QueryEntityRecords_V3\",\"operation\":null,\"packageVersion\":\"1.0.0\",\"httpMethod\":\"POST\",\"path\":\"/v3/QueryEntityRecords/query\",\"unifiedTypesCompatible\":true,\"savedJitInputFieldId\":\"in_QueryEntityRecords_V3\"}}"
+              }
+            }
+          },
+          {
+            "Javascript_GroupOrders": {
+              "run": {
+                "script": {
+                  "code": "let rows = $context.outputs.QueryEntityRecords_V3_1?.content;\nif (typeof rows === 'string') { try { rows = JSON.parse(rows); } catch (e) { rows = []; } }\nif (rows && !Array.isArray(rows)) rows = rows.value || rows.items || [];\nconst map = {};\nfor (const r of rows || []) {\n  const slug = r.restaurantSlug; const person = r.person;\n  if (!slug || !person) continue;\n  const g = map[slug] || (map[slug] = { restaurantSlug: slug, restaurantName: r.restaurantName || slug, people: [], orders: [] });\n  if (!g.people.includes(person)) g.people.push(person);\n  g.orders.push({ person, pickupAt: r.pickupAt || r.orderedAt, orderedAt: r.orderedAt, orderReference: r.orderReference || null });\n}\nconst restaurants = Object.values(map).map((g) => ({ ...g, orders: g.orders.sort((a, b) => (Date.parse(a.pickupAt) || 0) - (Date.parse(b.pickupAt) || 0)), count: g.people.length })).sort((a, b) => b.count - a.count);\nreturn { date: $context.outputs.Javascript_ResolveDate.orderDate, total: restaurants.reduce((n, g) => n + g.count, 0), restaurants };",
+                  "language": "javascript",
+                  "arguments": "${{ \"$context\": $context, \"$workflow\": $workflow, \"$input\": $input }}"
+                }
+              },
+              "export": {
+                "as": "{ ...$context, outputs: { ...$context?.outputs, \"Javascript_GroupOrders\": $output } }"
+              },
+              "metadata": {
+                "activityType": "JsInvoke",
+                "displayName": "Group orders per restaurant",
+                "fullName": "JsInvoke"
+              }
+            }
+          },
+          {
+            "Response_1": {
+              "response": "${{ date: $context.outputs.Javascript_GroupOrders.date, total: $context.outputs.Javascript_GroupOrders.total, restaurants: $context.outputs.Javascript_GroupOrders.restaurants }}",
+              "markJobAsFailed": false,
+              "then": "end",
+              "export": {
+                "as": "{ ...$context, outputs: { ...$context?.outputs, \"Response_1\": $output } }"
+              },
+              "metadata": {
+                "activityType": "Response",
+                "displayName": "Response",
+                "fullName": "Response"
+              }
+            }
+          }
+        ],
+        "metadata": {
+          "activityType": "Sequence",
+          "displayName": "Sequence",
+          "fullName": "Sequence"
+        }
+      }
+    }
+  ],
+  "evaluate": {
+    "mode": "strict",
+    "language": "javascript"
+  },
+  "input": {
+    "schema": {
+      "format": "json",
+      "document": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "YYYY-MM-DD (Europe/Amsterdam); defaults to today"
+          }
+        },
+        "title": "Inputs"
+      }
+    }
+  },
+  "output": {
+    "schema": {
+      "format": "json",
+      "document": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "restaurants": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "title": "Outputs"
+      }
+    }
+  }
+}

@@ -2,8 +2,14 @@ dist/
 node_modules/
 web-ext-artifacts/
 
-# UiPath backend solution: kept local, not published
-backend/
+# UiPath backend: local CLI state and build output
+backend/**/userProfile/
+backend/**/build/
+# Account-specific resources: the connection is named after the account that
+# created it and the process resources reference it. `uip solution resources
+# refresh` regenerates both.
+backend/**/resources/solution_folder/connection/
+backend/**/resources/solution_folder/process/
 
 # Local tool settings
 .claude/settings.local.json

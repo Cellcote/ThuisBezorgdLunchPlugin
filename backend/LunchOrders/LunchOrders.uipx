@@ -1,0 +1,17 @@
+{
+  "DocVersion": "1.0.0",
+  "StudioMinVersion": "2025.10.0",
+  "SolutionId": "9853f25a-5bad-4e8f-a8ff-8e0c1aafddc7",
+  "Projects": [
+    {
+      "Type": "Api",
+      "ProjectRelativePath": "PostLunchOrder/project.uiproj",
+      "Id": "575d69f0-f2dc-4814-b4b2-f423c39f832b"
+    },
+    {
+      "Type": "Api",
+      "ProjectRelativePath": "GetLunchOrders/project.uiproj",
+      "Id": "ae3923e8-15dc-4fa5-919a-f362cb2a6cda"
+    }
+  ]
+}

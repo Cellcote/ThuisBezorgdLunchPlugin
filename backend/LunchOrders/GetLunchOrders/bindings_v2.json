@@ -1,0 +1,24 @@
+{
+  "version": "2.0",
+  "resources": [
+    {
+      "resource": "Connection",
+      "key": "1bf9f2b5-41de-446e-9769-8444383a4d9a",
+      "activityId": "QueryEntityRecordsV3_1",
+      "activityDisplayName": "Query Entity Records",
+      "value": {
+        "ConnectionId": {
+          "defaultValue": "1bf9f2b5-41de-446e-9769-8444383a4d9a",
+          "isExpression": false
+        }
+      },
+      "metadata": {
+        "UseConnectionService": "true",
+        "Connector": "uipath-uipath-dataservice",
+        "ActivityName": "Query Entity Records",
+        "BindingsVersion": "2.2",
+        "SolutionsSupport": "true"
+      }
+    }
+  ]
+}

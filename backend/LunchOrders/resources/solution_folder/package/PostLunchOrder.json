@@ -1,0 +1,23 @@
+{
+  "docVersion": "1.0.0",
+  "resource": {
+    "name": "PostLunchOrder",
+    "kind": "package",
+    "apiVersion": "orchestrator.uipath.com/v1",
+    "projectKey": "575d69f0-f2dc-4814-b4b2-f423c39f832b",
+    "isOverridable": true,
+    "dependencies": [],
+    "runtimeDependencies": [],
+    "folders": [
+      {
+        "fullyQualifiedName": "solution_folder"
+      }
+    ],
+    "spec": {
+      "name": "PostLunchOrder"
+    },
+    "locks": [],
+    "key": "e723d6f0-623c-4cfe-9b6e-26b16607daba",
+    "files": []
+  }
+}
