@@ -1,14 +1,30 @@
 {
   "manifest_version": 3,
   "name": "ThuisBezorgd Lunch Filter",
-  "version": "2.0.0",
-  "description": "Auto-filters ThuisBezorgd for lunch: < 1.5 km, open 12-14, sorted by distance, no promo banners",
-  "permissions": [],
+  "version": "3.0.1",
+  "description": "Lunch filter for ThuisBezorgd: < 1.5 km, open 12-14, sorted by distance, shows where colleagues order",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyphY5kIaNkdUiS/2eWIaeQ/CNkunlzKI6+sfJK1PPuZjRD5VJ72r7ts6nkTk8JT1JF1kBd+xwpzF2kY0sJEk+DrHrg4geiMZkNipN5EvUXnoWcDKJhonjWKXRQRiX2Nuo+0ZO7kzuv2bYcn/7zE22OZMYsybwMPfpSdEhoK6UtIqSQZRurwb8bVWszRNtVNMLzXMHMVtCSMHNZiYCBKgB3zOAq64AaYHYTOeHcejOFQSEUecxoHuNd5S7fs4nkOWMdmn2ovr8FhYlo1wU3H+04obJE2MfPx4HK0wylL1v+tx/pWtYYZSfWpF8DpsOtaYu0G7G1VyAbzXHdFCjQNB/QIDAQAB",
+  "permissions": [
+    "identity",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://cloud.uipath.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
-      "matches": ["*://www.thuisbezorgd.nl/*"],
-      "js": ["content.js"],
-      "css": ["styles.css"],
+      "matches": [
+        "*://www.thuisbezorgd.nl/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
       "run_at": "document_idle"
     }
   ],

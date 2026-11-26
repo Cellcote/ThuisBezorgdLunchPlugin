@@ -1,1 +1,9 @@
 dist/
+node_modules/
+web-ext-artifacts/
+
+# UiPath backend solution: kept local, not published
+backend/
+
+# Local tool settings
+.claude/settings.local.json

@@ -57,7 +57,7 @@
 }
 
 /* Separator line to set it apart slightly */
-#tbf-lunch-toggle {
+#tbf3-lunch-toggle {
   border-top: 1px solid var(--xds-color-border-default, #e0e0e0);
   padding-top: 12px;
   margin-top: 4px;
@@ -101,13 +101,14 @@
 }
 
 .tbf-card {
+  position: relative;
   display: block;
   color: var(--xds-color-content-default, inherit);
   text-decoration: none;
   min-width: 0;
 }
 
-.tbf-card:hover .tbf-card-name {
+.tbf-card-link:hover .tbf-card-name {
   text-decoration: underline;
 }
 
@@ -156,4 +157,157 @@
 .tbf-card-meta span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tbf-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── Colleague orders ── */
+.tbf-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 16px;
+  border-radius: 999px;
+  background: var(--xds-color-interactive-brand, #ff8000);
+  color: #fff;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  cursor: default;
+}
+
+.tbf-chip {
+  position: relative;
+}
+
+.tbf-badge[data-tbf-names]:hover::after,
+.tbf-badge[data-tbf-names]:focus::after,
+.tbf-chip[data-tbf-names]:hover::after {
+  content: attr(data-tbf-names);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  min-width: 140px;
+  max-width: 260px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #1f1f1f;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: pre;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.tbf-chip[data-tbf-names]:hover::after {
+  left: 0;
+  right: auto;
+}
+
+.tbf-colleagues {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: -6px 0 16px;
+  font-size: 13px;
+  color: var(--xds-color-content-subdued, #757575);
+}
+
+.tbf-colleagues:empty {
+  display: none;
+}
+
+.tbf-chip {
+  display: inline-flex;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--xds-color-container-strong, rgba(127, 127, 127, 0.18));
+  color: var(--xds-color-content-default, inherit);
+  text-decoration: none;
+}
+
+.tbf-chip b {
+  color: var(--xds-color-interactive-brand, #ff8000);
+}
+
+.tbf-link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--xds-color-interactive-brand, #ff8000);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ── Toast ── */
+#tbf-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #1f1f1f;
+  color: #fff;
+  font-size: 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  transform: translateX(-50%);
+}
+
+.tbf-toast-btn {
+  padding: 6px 12px;
+  border: 1px solid #666;
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tbf-toast-primary {
+  border-color: #ff8000;
+  background: #ff8000;
+}
+
+
+/* ── Sidebar toggles ── */
+.tbf-toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tbf-toggle-label {
+  color: var(--xds-color-content-default, inherit);
+  font-size: 14px;
+}
+
+#tbf3-colleagues-toggle {
+  padding-top: 8px;
+}
+
+/* ── Colleague badges on Thuisbezorgd's own cards ── */
+.tbf-badge-host {
+  position: relative;
+}
+
+#tbf-colleagues-bar {
+  margin: 12px 0 20px;
 }
